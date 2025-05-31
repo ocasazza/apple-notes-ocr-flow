@@ -13,6 +13,7 @@ import subprocess
 import argparse
 import json
 import shutil
+import re
 from pathlib import Path
 import requests
 import time
@@ -56,6 +57,20 @@ def setup_directories(output_dir):
     
     return images_dir, text_dir, claude_dir
 
+def sanitize_filename(filename):
+    """Sanitize filename by replacing spaces with underscores and removing non-path characters."""
+    # Replace spaces with underscores
+    sanitized = filename.replace(' ', '_')
+    
+    # Remove any characters that aren't alphanumeric, underscore, hyphen, or period
+    sanitized = re.sub(r'[^\w\-\.]', '', sanitized)
+    
+    # Ensure the filename isn't empty
+    if not sanitized:
+        sanitized = "unnamed_note"
+    
+    return sanitized
+
 def export_apple_notes(images_dir, notes_folder=''):
     """Export Apple Notes as images using AppleScript."""
     print("Exporting Apple Notes as images...")
@@ -72,6 +87,22 @@ def export_apple_notes(images_dir, notes_folder=''):
     if result.returncode != 0:
         print(f"Error exporting notes: {result.stderr}")
         return False
+    
+    # Sanitize filenames in the output directory
+    text_dir = os.path.join(os.path.dirname(images_dir), 'text')
+    for file_path in Path(text_dir).glob('*.txt'):
+        # Get the original filename and sanitize it
+        original_name = file_path.name
+        sanitized_name = sanitize_filename(original_name)
+        
+        # If the name changed, rename the file
+        if original_name != sanitized_name:
+            new_path = file_path.parent / sanitized_name
+            try:
+                os.rename(file_path, new_path)
+                print(f"Renamed: {original_name} -> {sanitized_name}")
+            except Exception as e:
+                print(f"Error renaming {original_name}: {str(e)}")
     
     print(f"Successfully exported notes to {images_dir}")
     return True
@@ -326,8 +357,11 @@ def send_to_claude(text_dir, claude_dir, prompt, api_key):
                 print(f"Bad Request error for {txt_path.name}. This might be due to content size or format issues.")
                 print(f"Saving the original text content for reference.")
                 
+                # Sanitize the filename for the error file
+                sanitized_stem = sanitize_filename(txt_path.stem)
+                
                 # Save the original text content for reference
-                error_path = os.path.join(claude_dir, f"{txt_path.stem}_error.txt")
+                error_path = os.path.join(claude_dir, f"{sanitized_stem}_error.txt")
                 with open(error_path, 'w', encoding='utf-8') as f:
                     f.write(f"Original content that caused a 400 Bad Request error:\n\n{text_content}")
                 
@@ -348,13 +382,16 @@ def send_to_claude(text_dir, claude_dir, prompt, api_key):
             # Parse the response (OpenAI API format)
             response_data = response.json()
             
+            # Sanitize the filename for the output files
+            sanitized_stem = sanitize_filename(txt_path.stem)
+            
             # Save the Claude response
-            output_path = os.path.join(claude_dir, f"{txt_path.stem}_claude_response.json")
+            output_path = os.path.join(claude_dir, f"{sanitized_stem}_claude_response.json")
             with open(output_path, 'w', encoding='utf-8') as f:
                 json.dump(response_data, f, indent=2)
             
             # Save the response content as markdown
-            markdown_response_path = os.path.join(claude_dir, f"{txt_path.stem}_claude_response.md")
+            markdown_response_path = os.path.join(claude_dir, f"{sanitized_stem}_claude_response.md")
             with open(markdown_response_path, 'w', encoding='utf-8') as f:
                 # Extract text from OpenAI format response
                 f.write(response_data['choices'][0]['message']['content'])
@@ -368,8 +405,11 @@ def send_to_claude(text_dir, claude_dir, prompt, api_key):
         except Exception as e:
             print(f"Error sending {txt_path.name} to Claude: {str(e)}")
             
+            # Sanitize the filename for the error file
+            sanitized_stem = sanitize_filename(txt_path.stem)
+            
             # Save the problematic content for debugging
-            error_path = os.path.join(claude_dir, f"{txt_path.stem}_error.txt")
+            error_path = os.path.join(claude_dir, f"{sanitized_stem}_error.txt")
             with open(error_path, 'w', encoding='utf-8') as f:
                 f.write(f"Error: {str(e)}\n\nContent that caused the error:\n\n{text_content[:10000]}...")
     
@@ -380,6 +420,51 @@ def send_to_claude(text_dir, claude_dir, prompt, api_key):
         print("The extracted text files are available in the text directory.")
     
     return True
+
+def cleanup_temp_files(output_dir, keep_markdown=True):
+    """Clean up temporary files after workflow completion."""
+    print("Cleaning up temporary files...")
+    
+    # Define directories
+    text_dir = os.path.join(output_dir, 'text')
+    claude_dir = os.path.join(output_dir, 'claude_responses')
+    
+    # Remove text files
+    text_files = list(Path(text_dir).glob('*.txt'))
+    for file_path in text_files:
+        try:
+            os.remove(file_path)
+            print(f"Removed temporary file: {file_path}")
+        except Exception as e:
+            print(f"Error removing {file_path}: {str(e)}")
+    
+    # Remove JSON response files if markdown files exist
+    if keep_markdown:
+        json_files = list(Path(claude_dir).glob('*.json'))
+        for json_path in json_files:
+            # Check if corresponding markdown file exists
+            md_path = Path(claude_dir) / f"{json_path.stem.replace('_claude_response', '')}_claude_response.md"
+            if md_path.exists():
+                try:
+                    os.remove(json_path)
+                    print(f"Removed temporary file: {json_path}")
+                except Exception as e:
+                    print(f"Error removing {json_path}: {str(e)}")
+    
+    # Remove error files older than 7 days
+    error_files = list(Path(claude_dir).glob('*_error.txt'))
+    current_time = time.time()
+    for error_path in error_files:
+        file_age = current_time - os.path.getmtime(error_path)
+        # 7 days = 604800 seconds
+        if file_age > 604800:
+            try:
+                os.remove(error_path)
+                print(f"Removed old error file: {error_path}")
+            except Exception as e:
+                print(f"Error removing {error_path}: {str(e)}")
+    
+    print("Cleanup completed.")
 
 def main():
     """Main function to orchestrate the workflow."""
@@ -397,6 +482,9 @@ def main():
     if not send_to_claude(text_dir, claude_dir, args.claude_prompt, args.api_key):
         print("Failed to send text to Claude. Exiting.")
         return
+    
+    # Step 3: Clean up temporary files
+    cleanup_temp_files(args.output_dir)
     
     print("Workflow completed successfully!")
 

@@ -31,37 +31,37 @@ This project provides a workflow to:
 Run the workflow with default settings:
 
 ```bash
-./run_workflow.sh
+./run_workflow.sh --api-key "your-api-key-here"
 ```
 
 Or directly:
 
 ```bash
-./src/workflow.py
+./src/workflow.py --api-key "your-api-key-here"
 ```
 
 ### Command-line Options
 
 - `--output-dir`: Directory to store output files (default: ./output)
 - `--notes-folder`: Specific Apple Notes folder to process (default: all notes)
-- `--claude-prompt`: Prompt to send to Claude along with the extracted text (default: "Please analyze this text:")
-- `--api-key`: API key for Claude (default: provided in the script)
+- `--claude-prompt`: Prompt to send to Claude along with the extracted text (default: provided in the script)
+- `--api-key`: API key for Claude (required)
 
 ### Examples
 
-Process all notes and save output to a custom directory:
+cProcess all notes and save output to a custom directory:
 ```bash
-./src/workflow.py --output-dir ~/Documents/notes_analysis
+./run_workflow.sh --api-key "your-api-key-here" --output-dir ~/Documents/notes_analysis
 ```
 
 Process notes from a specific folder:
 ```bash
-./src/workflow.py --notes-folder "Work Notes"
+./run_workflow.sh --api-key "your-api-key-here" --notes-folder "Work Notes"
 ```
 
 Use a custom prompt for Claude:
 ```bash
-./src/workflow.py --claude-prompt "Summarize this text in bullet points:"
+./run_workflow.sh --api-key "your-api-key-here" --claude-prompt "Summarize this text in bullet points:"
 ```
 
 
