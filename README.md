@@ -5,6 +5,9 @@ This project provides a workflow to:
 1. Export Apple Notes content directly from the database as text files
 2. Send the text to Claude 3.7 via API for analysis
 
+## ToDo
+- https://huggingface.co/nanonets/Nanonets-OCR-s?library=transformers
+
 ## Requirements
 
 - macOS (for Apple Notes access)
