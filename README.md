@@ -7,6 +7,7 @@ This project provides a workflow to:
 
 ## ToDo
 - https://huggingface.co/nanonets/Nanonets-OCR-s?library=transformers
+- https://github.com/NanoNets/docext/tree/dev/markdown
 
 ## Requirements
 
